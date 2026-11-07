@@ -1,3 +1,5 @@
+#pragma once
+
 #include <d3d12.h>
 #include <dxgi1_4.h>
 
@@ -9,13 +11,14 @@
 
 using Microsoft::WRL::ComPtr;
 
-class DirectXLibrary {
+class DirectX12 {
 public:
-	ComPtr<IDXGIFactory4> CreateDXGIFactory();
-	ComPtr<IDXGIAdapter> GetHardwareAdapter(IDXGIFactory4* factory);
-	ComPtr<ID3D12Device> CreateD3D12Device(IDXGIAdapter1* adapter);
+	DirectX12(HWND hwnd);
+
+public:
+	ComPtr<IDXGIFactory4> CreateFactory();
+	ComPtr<IDXGIAdapter1> GetHardwareAdapter(IDXGIFactory4* factory);
+	ComPtr<ID3D12Device> CreateD3D12Device(IDXGIFactory4* factory, IDXGIAdapter1* adapter);
 	ComPtr<ID3D12CommandQueue> CreateCommandQueue(ID3D12Device* device);
 	ComPtr<IDXGISwapChain3> CreateSwapChain(IDXGIFactory4* factory, ID3D12CommandQueue* commandQueue, HWND hwnd);
-
-	void EnableDebugLayer();
 };

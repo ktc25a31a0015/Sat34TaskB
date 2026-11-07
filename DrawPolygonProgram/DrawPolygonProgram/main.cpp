@@ -1,7 +1,24 @@
 #include <Windows.h>
 #include <d3d12.h>
 
-#include "DirectXLibrary.h"
+#include "DirectX12.h";
+
+void EnableDebugLayer() {
+#if defined(_DEBUG)
+	ID3D12Debug* debugController;
+	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+
+		// デバッグレイヤーを有効化
+		debugController->EnableDebugLayer();
+
+		// より詳細な検証を有効化
+		ID3D12Debug1* debugController1;
+		if (SUCCEEDED(debugController->QueryInterface(IID_PPV_ARGS(&debugController1)))) {
+			debugController1->SetEnableGPUBasedValidation(TRUE);
+		}
+	}
+#endif
+}
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch(uMsg) {
@@ -40,6 +57,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		NULL // 追加データ
 	);
 	ShowWindow(hwnd, nCmdShow);
+	
+	EnableDebugLayer();
+	DirectX12 dx12(hwnd);
 
 	MSG msg{};
 	while(GetMessage(&msg, NULL, 0, 0)) {

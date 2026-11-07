@@ -1,7 +1,15 @@
-#include "DirectXLibrary.h"
+#include "DirectX12.h"
 
-ComPtr<IDXGIFactory4> DirectXLibrary::CreateDXGIFactory() {
-	ComPtr<IDXGIFactory4> factory;
+DirectX12::DirectX12(HWND hwnd) {
+	ComPtr<IDXGIFactory4> factory = CreateFactory();
+	ComPtr<IDXGIAdapter1> adapter = GetHardwareAdapter(factory.Get());
+	ComPtr<ID3D12Device> device = CreateD3D12Device(factory.Get(), adapter.Get());
+	ComPtr<ID3D12CommandQueue> commandQueue = CreateCommandQueue(device.Get());
+	ComPtr<IDXGISwapChain3> swapChain = CreateSwapChain(factory.Get(), commandQueue.Get(), hwnd);
+}
+
+ComPtr<IDXGIFactory4> DirectX12::CreateFactory() {
+	ComPtr<IDXGIFactory4> factory = nullptr;
 	UINT createFactoryFlags = 0;
 
 #if defined(_DEBUG)
@@ -9,8 +17,8 @@ ComPtr<IDXGIFactory4> DirectXLibrary::CreateDXGIFactory() {
 #endif
 
 	HRESULT hr = CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(&factory));
-	if(FAILED(hr)) {
-		OutputDebugString("Failed to create DXGI Factory\n");
+	if (FAILED(hr)) {
+		OutputDebugStringA("Failed to create DXGI Factory\n");
 
 		return nullptr;
 	}
@@ -18,11 +26,11 @@ ComPtr<IDXGIFactory4> DirectXLibrary::CreateDXGIFactory() {
 	return factory;
 }
 
-ComPtr<IDXGIAdapter> DirectXLibrary::GetHardwareAdapter(IDXGIFactory4* factory) {
+ComPtr<IDXGIAdapter1> DirectX12::GetHardwareAdapter(IDXGIFactory4* factory) {
 	ComPtr<IDXGIAdapter1> adapter = nullptr;
 
 	// ハードウェアアダプターを順番に検索
-	for(UINT adapterIndex = 0; ; ++adapterIndex) {
+	for (UINT adapterIndex = 0; ; ++adapterIndex) {
 		adapter = nullptr;
 
 		// アダプターが見つからなければループを終了
@@ -36,7 +44,7 @@ ComPtr<IDXGIAdapter> DirectXLibrary::GetHardwareAdapter(IDXGIFactory4* factory) 
 		if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) continue;
 
 		// DirectX12 対応テスト
-		if(SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr))) {
+		if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device), nullptr))) {
 			return adapter; // 対応するアダプターを返す
 		}
 	}
@@ -44,40 +52,45 @@ ComPtr<IDXGIAdapter> DirectXLibrary::GetHardwareAdapter(IDXGIFactory4* factory) 
 	return nullptr;
 }
 
-ComPtr<ID3D12Device> DirectXLibrary::CreateD3D12Device(IDXGIAdapter1* adapter) {
+ComPtr<ID3D12Device> DirectX12::CreateD3D12Device(IDXGIFactory4* factory, IDXGIAdapter1* adapter) {
 	ComPtr<ID3D12Device> device;
 
 	// 指定アダプターでデバイス作成を試行
 	HRESULT hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
 
-	if(FAILED(hr)) {
-		// 規定アダプターによる、フォールバック：ソフトウェアアダプターを試行
-		hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
+	if (FAILED(hr)) {
+		ComPtr<IDXGIAdapter> warpAdapter = nullptr;
 
-		if(FAILED(hr)) {
-			OutputDebugString("Failed to create D3D12 Device\n");
+		// 規定アダプターによる、フォールバック：ソフトウェアアダプターを試行
+		hr = factory->EnumWarpAdapter(IID_PPV_ARGS(&warpAdapter));
+		if (SUCCEEDED(hr)) {
+			hr = D3D12CreateDevice(warpAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
+		}
+
+		if (FAILED(hr)) {
+			OutputDebugStringA("Failed to create D3D12 Device\n");
 
 			return nullptr;
 		}
 
-		OutputDebugString("Using softwar adapter (WARP)\n");
+		OutputDebugStringA("Using softwar adapter (WARP)\n");
 	}
 
 	return device;
 }
 
-ComPtr<ID3D12CommandQueue> DirectXLibrary::CreateCommandQueue(ID3D12Device* device) {
+ComPtr<ID3D12CommandQueue> DirectX12::CreateCommandQueue(ID3D12Device* device) {
 	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT; // 直接実行型
 	queueDesc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL; // 標準優先度
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE; // 特別フラグなし
 	queueDesc.NodeMask = 0; // 単一 GPU 使用
 
-	ComPtr<ID3D12CommandQueue> commandQueue;
+	ComPtr<ID3D12CommandQueue> commandQueue = nullptr;
 
 	HRESULT hr = device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue));
 	if (FAILED(hr)) {
-		OutputDebugString("Failed to create D3D12 Command Queue\n");
+		OutputDebugStringA("Failed to create D3D12 Command Queue\n");
 
 		return nullptr;
 	}
@@ -87,7 +100,7 @@ ComPtr<ID3D12CommandQueue> DirectXLibrary::CreateCommandQueue(ID3D12Device* devi
 	return commandQueue;
 }
 
-ComPtr<IDXGISwapChain3> DirectXLibrary::CreateSwapChain(IDXGIFactory4* factory, ID3D12CommandQueue* commandQueue, HWND hwnd) {
+ComPtr<IDXGISwapChain3> DirectX12::CreateSwapChain(IDXGIFactory4* factory, ID3D12CommandQueue* commandQueue, HWND hwnd) {
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
 	swapChainDesc.BufferCount = 2; // ダブルバッファリング
 	swapChainDesc.Width = 800; // 画面幅
@@ -97,7 +110,7 @@ ComPtr<IDXGISwapChain3> DirectXLibrary::CreateSwapChain(IDXGIFactory4* factory, 
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD; // 高速切り替え
 	swapChainDesc.SampleDesc.Count = 1; // マルチサンプリングなし
 
-	ComPtr<IDXGISwapChain1> swapChain1;
+	ComPtr<IDXGISwapChain1> swapChain1 = nullptr;
 	HRESULT hr = factory->CreateSwapChainForHwnd(
 		commandQueue, // コマンドキュー
 		hwnd, // ターゲットウィンドウ
@@ -108,7 +121,7 @@ ComPtr<IDXGISwapChain3> DirectXLibrary::CreateSwapChain(IDXGIFactory4* factory, 
 	);
 
 	if (FAILED(hr)) {
-		OutputDebugString("Failed to create Swap Chain\n");
+		OutputDebugStringA("Failed to create Swap Chain\n");
 
 		return nullptr;
 	}
@@ -117,28 +130,11 @@ ComPtr<IDXGISwapChain3> DirectXLibrary::CreateSwapChain(IDXGIFactory4* factory, 
 	ComPtr<IDXGISwapChain3> swapChain;
 	hr = swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain));
 
-	if(FAILED(hr)) {
-		OutputDebugString("Failed to cast to SwapChain3\n");
+	if (FAILED(hr)) {
+		OutputDebugStringA("Failed to cast to SwapChain3\n");
 
 		return nullptr;
 	}
 
 	return swapChain;
-}
-
-void DirectXLibrary::EnableDebugLayer() {
-#if defined(_DEBUG)
-	ComPtr<ID3D12Debug> debugController;
-	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
-
-		// デバッグレイヤーを有効化
-		debugController->EnableDebugLayer();
-
-		// より詳細な検証を有効化
-		ComPtr<ID3D12Debug1> debugController1;
-		if(SUCCEEDED(debugController->QueryInterface(IID_PPV_ARGS(&debugController1)))) {
-			debugController1->SetEnableGPUBasedValidation(TRUE);
-		}
-	}
-#endif
 }
