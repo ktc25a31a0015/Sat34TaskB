@@ -102,33 +102,74 @@ public:
 
 		return true;
 	}
+
+	void loop() noexcept {
+		while (_windowInsntance.messageLoop()) {
+			const auto backBufferIndex = _swapChainInstance.get()->GetCurrentBackBufferIndex();
+
+			// 以前のフレームの GPU 処理が完了しているか確認して待機
+			if (_frameFenceValue[backBufferIndex] != 0) {
+				_fenceInstance.wait(_frameFenceValue[backBufferIndex]);
+			}
+
+			// リセット
+			_commandAllocatorInstance[backBufferIndex].reset();
+			_commandListInstance.reset(_commandAllocatorInstance[backBufferIndex]);
+
+			// リソースバリアでレンダーターゲットを Present から RenderTarget へ変更
+			auto pToRT = resourceBarrier(_renderTargetInstance.get(backBufferIndex).Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			_commandListInstance.get()->ResourceBarrier(1, &pToRT);
+
+			// レンダーターゲットの設定
+			D3D12_CPU_DESCRIPTOR_HANDLE handles[] = { _renderTargetInstance.getDescriptorHandle(_deviceInstance, _descriptorHeapInstance, backBufferIndex) };
+			_commandListInstance.get()->OMSetRenderTargets(1, handles, false, nullptr);
+
+			// レンダーターゲットのクリア
+			const float clearColor[] = { 1.f, 0.f, 0.f, 1.f }; // 赤色でクリア
+			_commandListInstance.get()->ClearRenderTargetView(handles[0], clearColor, 0, nullptr);
+
+			// リソースバリアでレンダーターゲットを RenderTarget から Present へ変更
+			auto rtToP = resourceBarrier(_renderTargetInstance.get(backBufferIndex).Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+			_commandListInstance.get()->ResourceBarrier(1, &rtToP);
+
+			// コマンドリストをクローズ
+			_commandListInstance.get()->Close();
+
+			// コマンドキューにコマンドリストを送信
+			ID3D12CommandList* ppCommandLists[] = { _commandListInstance.get().Get() };
+			_commandQueueInstance.get()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+			// プレゼント
+			_swapChainInstance.get()->Present(1, 0);
+
+			// フェンスにフェンス値を設定
+			_commandQueueInstance.get()->Signal(_fenceInstance.get().Get(), _nextFenceValue);
+			_frameFenceValue[backBufferIndex] = _nextFenceValue;
+			_nextFenceValue++;
+		}
+	}
+
+	D3D12_RESOURCE_BARRIER resourceBarrier(ID3D12Resource* resource, D3D12_RESOURCE_STATES from, D3D12_RESOURCE_STATES to) noexcept {
+		D3D12_RESOURCE_BARRIER barrier{};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource = resource;
+		barrier.Transition.StateBefore = from;
+		barrier.Transition.StateAfter = to;
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+		return barrier;
+	}
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-	WNDCLASS wc{};
-	wc.lpfnWndProc = WindowProc;
-	wc.hInstance = hInstance;
-	wc.lpszClassName = "GameWindow";
-	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	RegisterClass(&wc);
+	Application app;
 
-	HWND hwnd = CreateWindow(
-		"GameWindow", "Draw Polygon Program", // ウィンドウクラス名、ウィンドウタイトル
-		WS_OVERLAPPEDWINDOW, // ウィンドウスタイル
-		CW_USEDEFAULT, CW_USEDEFAULT, // 位置（自動）
-		800, 600, // サイズ（幅、高さ）
-		NULL, NULL, hInstance, // 親ウィンドウ、メニュー、インスタンス
-		NULL // 追加データ
-	);
-	ShowWindow(hwnd, nCmdShow);
-	
-	EnableDebugLayer();
-	DirectX12 dx12(hwnd);
-
-	MSG msg{};
-	while(GetMessage(&msg, NULL, 0, 0)) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+	if (!app.initialize(hInstance)) {
+		assert(false && "アプリケーションの初期化に失敗しました。");
 	}
+
+	app.loop();
+
+	return 0;
 }

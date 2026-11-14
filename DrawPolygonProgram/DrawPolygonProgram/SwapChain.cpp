@@ -12,7 +12,7 @@ bool SwapChain::create(const DXGI& dxgi, const Window& window, const CommandQueu
 	_swapChainDesc.Height			= h;								// バックバッファの縦幅
 	_swapChainDesc.Format			= DXGI_FORMAT_R8G8B8A8_UNORM;		// バックバッファのフォーマット
 	_swapChainDesc.BufferUsage		= DXGI_USAGE_RENDER_TARGET_OUTPUT;	// レンダーターゲットとしての使用
-	_swapChainDesc.SwapEffect		= DXGI_SWAP_EFFECT_DISCARD;			// 舞フレーム画面更新、描画後バッファを破棄
+	_swapChainDesc.SwapEffect		= DXGI_SWAP_EFFECT_FLIP_DISCARD;			// 舞フレーム画面更新、描画後バッファを破棄
 	_swapChainDesc.SampleDesc.Count = 1;								// マルチサンプリングなし
 
 	// 一時的なスワップチェインの作成
