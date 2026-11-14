@@ -1,43 +1,108 @@
-#include <Windows.h>
-#include <d3d12.h>
+#include "Window.h"
 
-#include "DirectX12.h";
+#include "Device.h"
+#include "DXGI.h"
+#include "CommandAllocator.h"
+#include "CommandList.h"
+#include "CommandQueue.h"
+#include "SwapChain.h"
+#include "DescriptorHeap.h"
+#include "RenderTarget.h"
+#include "Fence.h"
 
-void EnableDebugLayer() {
-#if defined(_DEBUG)
-	ID3D12Debug* debugController;
-	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+#include <cassert>
 
-		// デバッグレイヤーを有効化
-		debugController->EnableDebugLayer();
+class Application final {
+public:
+	Application() = default;
+	~Application() = default;
 
-		// より詳細な検証を有効化
-		ID3D12Debug1* debugController1;
-		if (SUCCEEDED(debugController->QueryInterface(IID_PPV_ARGS(&debugController1)))) {
-			debugController1->SetEnableGPUBasedValidation(TRUE);
+private:
+	Window _windowInsntance{};
+	DXGI _dxgiInstance{};
+	Device _deviceInstance{};
+	CommandQueue _commandQueueInstance{};
+	SwapChain _swapChainInstance{};
+	DescriptorHeap _descriptorHeapInstance{};
+	RenderTarget _renderTargetInstance{};
+	CommandAllocator _commandAllocatorInstance[2]{};
+	CommandList _commandListInstance{};
+
+	Fence _fenceInstance{};
+	UINT64 _frameFenceValue[2]{};
+	UINT64 _nextFenceValue = 1;
+
+public:
+	bool initialize(HINSTANCE instance) noexcept {
+		if (S_OK != _windowInsntance.create(instance, 1280, 720, "MyApp")) {
+			assert(false && "ウィンドウの作成に失敗しました。");
+
+			return false;
 		}
+
+		if (!_dxgiInstance.setDisplayAdapter()) {
+			assert(false && "DXGIのアダプタ設定に失敗しました。");
+
+			return false;
+		}
+
+		if (!_deviceInstance.create(_dxgiInstance)) {
+			assert(false && "デバイスの作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_commandQueueInstance.create(_deviceInstance)) {
+			assert(false && "コマンドキューの作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_swapChainInstance.create(_dxgiInstance, _windowInsntance, _commandQueueInstance)) {
+			assert(false && "スワップチェインの作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_descriptorHeapInstance.create(_deviceInstance, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, _swapChainInstance.getDesc().BufferCount)) {
+			assert(false && "ディスクリプタヒープの作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_renderTargetInstance.createBackBuffer(_deviceInstance, _swapChainInstance, _descriptorHeapInstance)) {
+			assert(false, "レンダーターゲットの作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_commandAllocatorInstance[0].create(_deviceInstance, D3D12_COMMAND_LIST_TYPE_DIRECT)) {
+			assert(false && "コマンドアロケータ０の作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_commandAllocatorInstance[1].create(_deviceInstance, D3D12_COMMAND_LIST_TYPE_DIRECT)) {
+			assert(false && "コマンドアロケータ１の作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_commandListInstance.create(_deviceInstance, _commandAllocatorInstance[0])) {
+			assert(false && "コマンドリストの作成に失敗しました。");
+
+			return false;
+		}
+
+		if (!_fenceInstance.create(_deviceInstance)) {
+			assert(false && "フェンスの作成に失敗しました。");
+
+			return false;
+		}
+
+		return true;
 	}
-#endif
-}
-
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	switch(uMsg) {
-	case WM_DESTROY:
-		PostQuitMessage(0);
-
-		return 0;
-
-	case WM_PAINT:
-
-		return 0;
-
-	case WM_KEYDOWN:
-
-		return 0;
-	}
-
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
-}
+};
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	WNDCLASS wc{};
